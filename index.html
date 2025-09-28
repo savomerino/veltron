@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TodoMoto SRL</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #fdfdfd; /* Un fondo suave para que se vea mejor */
+        }
+        .responsive-logo {
+            width: 20vw; /* Ocupa el 20% del ancho en mobile */
+            height: auto; /* Mantiene la proporción */
+            max-width: 250px; /* Límite para que no sea excesivamente grande en mobile */
+        }
+
+        /* Para pantallas de escritorio (desktop) a partir de 1024px de ancho */
+        @media (min-width: 1024px) {
+            .responsive-logo {
+                width: 30vw; /* Ocupa el 30% del ancho en desktop */
+                max-width: 400px; /* Límite mayor para desktop */
+            }
+        }
+    </style>
+</head>
+<body>
+    <img src="./img/TMlogo.png" alt="Logo" class="responsive-logo">
+</body>
+</html>

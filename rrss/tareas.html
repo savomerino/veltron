@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organizador de Tareas - TODOMOTO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .task-card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease-in-out;
+        }
+        .task-card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateY(-2px);
+        }
+        .status-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 12a1 1 0 01-.707-.293l-3-3a1 1 0 011.414-1.414L10 9.586l2.293-2.293a1 1 0 011.414 1.414l-3 3A1 1 0 0110 12z" clip-rule="evenodd" /></svg>');
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 1.25em 1.25em;
+            padding-right: 2rem;
+        }
+        .checklist-item input:checked + span {
+            text-decoration: line-through;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Organizador de Tareas</h1>
+                <p class="text-lg text-gray-600">Planifica, ejecuta y completa tus pendientes.</p>
+            </div>
+             <a href="index.html" class="bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-slate-700 transition-colors inline-block mt-4 sm:mt-0">
+                ← Volver al Plan Estratégico
+            </a>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">Progreso General</h2>
+            <div class="flex justify-between items-center mb-1 text-sm font-medium">
+                <span class="text-gray-600">Tareas Completadas</span>
+                <span id="progress-text" class="text-slate-800 font-semibold">0 / 0 (0%)</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-4">
+                <div id="progress-bar" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="mb-8">
+             <div class="bg-white rounded-lg shadow-md p-4">
+                <form id="add-task-form" class="flex items-center gap-4">
+                    <input type="text" id="new-task-title" placeholder="Añadir nueva tarea..." class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap">Agregar Tarea</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="tasks-list" class="space-y-4">
+            </div>
+
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const tasksList = document.getElementById('tasks-list');
+        const addTaskForm = document.getElementById('add-task-form');
+        const newTaskTitleInput = document.getElementById('new-task-title');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+
+        let tasks = []; // Inicializar tasks como un array vacío
+
+        // Nueva función para cargar tareas desde la base de datos
+        const loadTasksFromDB = async () => {
+            try {
+                const response = await fetch('/api/tasks'); // Reemplaza '/api/tasks' con la ruta correcta a tu API
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                tasks = data; // Asigna los datos de la base de datos a la variable tasks
+                renderTasks();
+            } catch (error) {
+                console.error('Error al cargar tareas desde la base de datos:', error);
+                // Puedes mostrar un mensaje de error al usuario aquí
+            }
+        };
+
+        const saveTasks = () => {
+            // localStorage.setItem('tasks', JSON.stringify(tasks)); // Eliminar esta línea
+        };
+
+        const renderTasks = () => {
+            tasksList.innerHTML = '';
+            
+            if (tasks.length === 0) {
+                tasksList.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">¡Todo listo! No hay tareas pendientes.</p></div>`;
+            }
+
+            tasks.forEach(task => {
+                const taskElement = document.createElement('div');
+                taskElement.className = 'task-card p-4';
+                taskElement.dataset.id = task.id;
+
+                let checklistHTML = '<div class="space-y-2 mt-3">';
+                if (task.checklist && Array.isArray(task.checklist)) { // Verificar si task.checklist existe y es un array
+                    task.checklist.forEach((item, index) => {
+                        checklistHTML += `
+                            <label class="flex items-center checklist-item text-sm">
+                                <input type="checkbox" data-index="${index}" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${item.done ? 'checked' : ''}>
+                                <span class="ml-2">${item.text}</span>
+                            </label>
+                        `;
+                    });
+                }
+                checklistHTML += '</div>';
+
+                taskElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg">${task.title}</h3>
+                        <select class="status-select text-sm font-semibold p-1 pr-8 border rounded-md ${getStatusColor(task.status)}">
+                            <option value="pendiente" ${task.status === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                            <option value="en-proceso" ${task.status === 'en-proceso' ? 'selected' : ''}>En Proceso</option>
+                            <option value="realizado" ${task.status === 'realizado' ? 'selected' : ''}>Realizado</option>
+                        </select>
+                    </div>
+                    ${checklistHTML}
+                    <div class="mt-4">
+                        <form class="flex items-center gap-2 add-checklist-form">
+                            <input type="text" placeholder="Nuevo item..." class="w-full px-2 py-1 text-sm border-b-2 focus:outline-none focus:border-blue-500">
+                            <button type="submit" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-1 px-2 rounded-md">Añadir</button>
+                        </form>
+                    </div>
+                     <button class="delete-task-btn text-xs text-red-500 hover:text-red-700 mt-4">Eliminar Tarea</button>
+                `;
+                tasksList.appendChild(taskElement);
+            });
+            updateProgress();
+        };
+        
+        const getStatusColor = (status) => {
+            switch(status) {
+                case 'pendiente': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                case 'en-proceso': return 'bg-blue-100 text-blue-800 border-blue-300';
+                case 'realizado': return 'bg-green-100 text-green-800 border-green-300';
+                default: return 'bg-slate-100 text-slate-800 border-slate-300';
+            }
+        };
+
+        const addTask = async (title) => {
+            try {
+                const response = await fetch('/api/tasks', { // Reemplaza '/api/tasks' con la ruta correcta a tu API
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title, status: 'pendiente', checklist: [] })
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const newTask = await response.json(); // Obtener la nueva tarea con el ID asignado por la base de datos
+                tasks.unshift(newTask); // Agregar la nueva tarea al array
+                renderTasks(); // Volver a renderizar la lista de tareas
+            } catch (error) {
+                console.error('Error al agregar tarea a la base de datos:', error);
+                // Puedes mostrar un mensaje de error al usuario aquí
+            }
+        };
+
+        const updateProgress = () => {
+            const totalTasks = tasks.length;
+            const completedTasks = tasks.filter(task => task.status === 'realizado').length;
+            const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${completedTasks} / ${totalTasks} (${percentage}%)`;
+        };
+        
+        addTaskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const title = newTaskTitleInput.value.trim();
+            if (title) {
+                addTask(title);
+                newTaskTitleInput.value = '';
+            }
+        });
+
+        tasksList.addEventListener('change', async (e) => {
+            const target = e.target;
+            const taskCard = target.closest('.task-card');
+            const taskId = parseInt(taskCard.dataset.id);
+            const task = tasks.find(t => t.id === taskId);
+
+            if (target.matches('select.status-select')) {
+                task.status = target.value;
+            }
+            
+            if (target.matches('input[type="checkbox"]')) {
+                const checklistIndex = parseInt(target.dataset.index);
+                if (task.checklist && Array.isArray(task.checklist) && task.checklist[checklistIndex]) { // Verificar si la checklist existe, es un array y el índice es válido
+                    task.checklist[checklistIndex].done = target.checked;
+                }
+            }
+
+           try {
+                const response = await fetch(`/api/tasks/${taskId}`, { // Reemplaza '/api/tasks/:id' con la ruta correcta a tu API
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(task)
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                renderTasks();
+            } catch (error) {
+                console.error('Error al actualizar la tarea en la base de datos:', error);
+                // Puedes mostrar un mensaje de error al usuario aquí
+            }
+        });
+
+        tasksList.addEventListener('submit', async (e) => {
+            e.preventDefault();
+             if (e.target.matches('.add-checklist-form')) {
+                const input = e.target.querySelector('input');
+                const text = input.value.trim();
+                if(text) {
+                    const taskCard = e.target.closest('.task-card');
+                    const taskId = parseInt(taskCard.dataset.id);
+                    const task = tasks.find(t => t.id === taskId);
+                    if (task.checklist && Array.isArray(task.checklist)) { // Verificar si la checklist existe y es un array
+                        task.checklist.push({ text, done: false });
+                    } else {
+                        task.checklist = [{ text, done: false }]; // Inicializar la checklist si no existe
+                    }
+                    input.value = '';
+                     try {
+                        const response = await fetch(`/api/tasks/${taskId}`, { // Reemplaza '/api/tasks/:id' con la ruta correcta a tu API
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(task)
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        renderTasks();
+                    } catch (error) {
+                        console.error('Error al actualizar la tarea en la base de datos:', error);
+                        // Puedes mostrar un mensaje de error al usuario aquí
+                    }
+                    renderTasks();
+                }
+            }
+        });
+        
+         tasksList.addEventListener('click', async (e) => {
+            if (e.target.matches('.delete-task-btn')) {
+                 if (confirm('¿Estás seguro de que quieres eliminar esta tarea?')) {
+                    const taskCard = e.target.closest('.task-card');
+                    const taskId = parseInt(taskCard.dataset.id);
+                    try {
+                        const response = await fetch(`/api/tasks/${taskId}`, { // Reemplaza '/api/tasks/:id' con la ruta correcta a tu API
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        tasks = tasks.filter(t => t.id !== taskId);
+                        renderTasks();
+                    } catch (error) {
+                        console.error('Error al eliminar la tarea de la base de datos:', error);
+                        // Puedes mostrar un mensaje de error al usuario aquí
+                    }
+                }
+            }
+        });
+
+
+        // Initial Render
+         loadTasksFromDB(); // Cargar las tareas desde la base de datos al cargar la página
+    });
+    </script>
+
+</body>
+</html>
