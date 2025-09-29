@@ -84,7 +84,35 @@ function createTask($conn) {
 
     if ($conn->query($sql)) {
         $taskId = $conn->insert_id;
-        echo json_encode(['id' => $taskId, 'title' => $title, 'description' => $description, 'assigned_to' => $assignedTo, 'deadline' => $deadline, 'checklist' => []]);
+
+        // Guardar checklist si viene en el request
+        $checklist = isset($data->checklist) && is_array($data->checklist) ? $data->checklist : [];
+        foreach ($checklist as $item) {
+            $text = isset($item->text) ? $conn->real_escape_string($item->text) : '';
+            $done = isset($item->done) && $item->done ? 1 : 0;
+            if ($text !== '') {
+                $insertChecklistSql = "INSERT INTO checklist_items (task_id, text, done) VALUES ($taskId, '$text', $done)";
+                $conn->query($insertChecklistSql);
+            }
+        }
+
+        // Recuperar los ítems insertados para devolverlos en la respuesta
+        $checklistResult = $conn->query("SELECT * FROM checklist_items WHERE task_id = $taskId");
+        $checklistArr = [];
+        if ($checklistResult) {
+            while ($row = $checklistResult->fetch_assoc()) {
+                $checklistArr[] = $row;
+            }
+        }
+
+        echo json_encode([
+            'id' => $taskId,
+            'title' => $title,
+            'description' => $description,
+            'assigned_to' => $assignedTo,
+            'deadline' => $deadline,
+            'checklist' => $checklistArr
+        ]);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to create task: ' . $conn->error]);
