@@ -1,11 +1,10 @@
 <?php
-// filepath: api/task.php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-require_once 'db.php'; // 👈 usa la conexión original ($conn)
+require_once 'db.php'; // conexión con $conn
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -33,7 +32,7 @@ switch ($method) {
 $conn->close();
 
 function getTasks($conn) {
-    $sql = "SELECT * FROM tasks";
+    $sql = "SELECT * FROM tasks ORDER BY id DESC";
     $result = $conn->query($sql);
 
     if (!$result) {
@@ -46,7 +45,7 @@ function getTasks($conn) {
     while ($row = $result->fetch_assoc()) {
         $taskId = $row['id'];
 
-        // Obtener checklist de cada tarea
+        // checklist
         $checklist = [];
         $checklistSql = "SELECT * FROM checklist_items WHERE task_id = $taskId";
         $checklistResult = $conn->query($checklistSql);
@@ -76,14 +75,15 @@ function createTask($conn) {
     $description = $conn->real_escape_string($data->description ?? '');
     $assignedTo = $conn->real_escape_string($data->assigned_to ?? '');
     $deadline = $conn->real_escape_string($data->deadline ?? '');
+    $status = $conn->real_escape_string($data->status ?? 'pendiente');
 
-    $sql = "INSERT INTO tasks (title, description, assigned_to, deadline) 
-            VALUES ('$title', '$description', '$assignedTo', '$deadline')";
+    $sql = "INSERT INTO tasks (title, description, assigned_to, deadline, status) 
+            VALUES ('$title', '$description', '$assignedTo', '$deadline', '$status')";
 
     if ($conn->query($sql)) {
         $taskId = $conn->insert_id;
 
-        // Guardar checklist si viene
+        // checklist
         if (!empty($data->checklist) && is_array($data->checklist)) {
             foreach ($data->checklist as $item) {
                 $text = $conn->real_escape_string($item->text ?? '');
@@ -116,13 +116,14 @@ function updateTask($conn) {
     $description = $conn->real_escape_string($data->description ?? '');
     $assignedTo = $conn->real_escape_string($data->assigned_to ?? '');
     $deadline = $conn->real_escape_string($data->deadline ?? '');
+    $status = $conn->real_escape_string($data->status ?? 'pendiente');
 
     $sql = "UPDATE tasks 
-            SET title='$title', description='$description', assigned_to='$assignedTo', deadline='$deadline' 
+            SET title='$title', description='$description', assigned_to='$assignedTo', deadline='$deadline', status='$status'
             WHERE id=$taskId";
 
     if ($conn->query($sql)) {
-        // Resetear checklist
+        // reset checklist
         $conn->query("DELETE FROM checklist_items WHERE task_id = $taskId");
         if (!empty($data->checklist) && is_array($data->checklist)) {
             foreach ($data->checklist as $item) {
