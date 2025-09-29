@@ -1,11 +1,11 @@
 <?php
-// filepath: d:\SAVO\BULGARIA\CUENTAS\VELTRON\RRSS\APP\rrss\api\task.php
+// filepath: api/task.php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-require_once 'db.php';
+require_once 'db.php'; // 👈 usa la conexión original ($conn)
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -45,20 +45,17 @@ function getTasks($conn) {
     $tasks = [];
     while ($row = $result->fetch_assoc()) {
         $taskId = $row['id'];
+
+        // Obtener checklist de cada tarea
+        $checklist = [];
         $checklistSql = "SELECT * FROM checklist_items WHERE task_id = $taskId";
         $checklistResult = $conn->query($checklistSql);
-
-        if (!$checklistResult) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Checklist query failed: ' . $conn->error]);
-            return;
+        if ($checklistResult) {
+            while ($checklistRow = $checklistResult->fetch_assoc()) {
+                $checklistRow['done'] = (bool)$checklistRow['done'];
+                $checklist[] = $checklistRow;
+            }
         }
-
-        $checklist = [];
-        while ($checklistRow = $checklistResult->fetch_assoc()) {
-            $checklist[] = $checklistRow;
-        }
-
         $row['checklist'] = $checklist;
         $tasks[] = $row;
     }
@@ -69,50 +66,36 @@ function getTasks($conn) {
 function createTask($conn) {
     $data = json_decode(file_get_contents("php://input"));
 
-    if (!isset($data->title) || !isset($data->description) || !isset($data->assigned_to) || !isset($data->deadline)) {
+    if (!isset($data->title)) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing required fields']);
         return;
     }
 
-    $title = $data->title;
-    $description = $data->description;
-    $assignedTo = $data->assigned_to;
-    $deadline = $data->deadline;
+    $title = $conn->real_escape_string($data->title);
+    $description = $conn->real_escape_string($data->description ?? '');
+    $assignedTo = $conn->real_escape_string($data->assigned_to ?? '');
+    $deadline = $conn->real_escape_string($data->deadline ?? '');
 
-    $sql = "INSERT INTO tasks (title, description, assigned_to, deadline) VALUES ('$title', '$description', '$assignedTo', '$deadline')";
+    $sql = "INSERT INTO tasks (title, description, assigned_to, deadline) 
+            VALUES ('$title', '$description', '$assignedTo', '$deadline')";
 
     if ($conn->query($sql)) {
         $taskId = $conn->insert_id;
 
-        // Guardar checklist si viene en el request
-        $checklist = isset($data->checklist) && is_array($data->checklist) ? $data->checklist : [];
-        foreach ($checklist as $item) {
-            $text = isset($item->text) ? $conn->real_escape_string($item->text) : '';
-            $done = isset($item->done) && $item->done ? 1 : 0;
-            if ($text !== '') {
-                $insertChecklistSql = "INSERT INTO checklist_items (task_id, text, done) VALUES ($taskId, '$text', $done)";
-                $conn->query($insertChecklistSql);
+        // Guardar checklist si viene
+        if (!empty($data->checklist) && is_array($data->checklist)) {
+            foreach ($data->checklist as $item) {
+                $text = $conn->real_escape_string($item->text ?? '');
+                $done = !empty($item->done) ? 1 : 0;
+                if ($text !== '') {
+                    $conn->query("INSERT INTO checklist_items (task_id, text, done) 
+                                  VALUES ($taskId, '$text', $done)");
+                }
             }
         }
 
-        // Recuperar los ítems insertados para devolverlos en la respuesta
-        $checklistResult = $conn->query("SELECT * FROM checklist_items WHERE task_id = $taskId");
-        $checklistArr = [];
-        if ($checklistResult) {
-            while ($row = $checklistResult->fetch_assoc()) {
-                $checklistArr[] = $row;
-            }
-        }
-
-        echo json_encode([
-            'id' => $taskId,
-            'title' => $title,
-            'description' => $description,
-            'assigned_to' => $assignedTo,
-            'deadline' => $deadline,
-            'checklist' => $checklistArr
-        ]);
+        echo json_encode(['message' => 'Task created successfully', 'id' => $taskId]);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to create task: ' . $conn->error]);
@@ -120,43 +103,38 @@ function createTask($conn) {
 }
 
 function updateTask($conn) {
-    $taskId = intval(basename($_SERVER['REQUEST_URI']));
+    $taskId = intval($_GET['id'] ?? 0);
     $data = json_decode(file_get_contents("php://input"));
 
-    if (!isset($data->title) || !isset($data->description) || !isset($data->assigned_to) || !isset($data->deadline) || !isset($data->checklist)) {
+    if ($taskId <= 0) {
         http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields']);
+        echo json_encode(['error' => 'Invalid task ID']);
         return;
     }
 
-    $title = $data->title;
-    $description = $data->description;
-    $assignedTo = $data->assigned_to;
-    $deadline = $data->deadline;
-    $checklist = $data->checklist;
+    $title = $conn->real_escape_string($data->title ?? '');
+    $description = $conn->real_escape_string($data->description ?? '');
+    $assignedTo = $conn->real_escape_string($data->assigned_to ?? '');
+    $deadline = $conn->real_escape_string($data->deadline ?? '');
 
-    $sql = "UPDATE tasks SET title='$title', description='$description', assigned_to='$assignedTo', deadline='$deadline' WHERE id=$taskId";
+    $sql = "UPDATE tasks 
+            SET title='$title', description='$description', assigned_to='$assignedTo', deadline='$deadline' 
+            WHERE id=$taskId";
 
     if ($conn->query($sql)) {
-        // Delete existing checklist items
-        $deleteChecklistSql = "DELETE FROM checklist_items WHERE task_id = $taskId";
-        if ($conn->query($deleteChecklistSql)) {
-            // Insert new checklist items
-            foreach ($checklist as $item) {
-                $text = $item->text;
-                $done = $item->done ? 1 : 0;
-                $insertChecklistSql = "INSERT INTO checklist_items (task_id, text, done) VALUES ($taskId, '$text', $done)";
-                if (!$conn->query($insertChecklistSql)) {
-                    http_response_code(500);
-                    echo json_encode(['error' => 'Failed to insert checklist item: ' . $conn->error]);
-                    return;
+        // Resetear checklist
+        $conn->query("DELETE FROM checklist_items WHERE task_id = $taskId");
+        if (!empty($data->checklist) && is_array($data->checklist)) {
+            foreach ($data->checklist as $item) {
+                $text = $conn->real_escape_string($item->text ?? '');
+                $done = !empty($item->done) ? 1 : 0;
+                if ($text !== '') {
+                    $conn->query("INSERT INTO checklist_items (task_id, text, done) 
+                                  VALUES ($taskId, '$text', $done)");
                 }
             }
-            echo json_encode(['message' => 'Task updated successfully']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['error' => 'Failed to delete checklist items: ' . $conn->error]);
         }
+        echo json_encode(['message' => 'Task updated successfully']);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to update task: ' . $conn->error]);
@@ -164,7 +142,13 @@ function updateTask($conn) {
 }
 
 function deleteTask($conn) {
-    $taskId = intval(basename($_SERVER['REQUEST_URI']));
+    $taskId = intval($_GET['id'] ?? 0);
+
+    if ($taskId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid task ID']);
+        return;
+    }
 
     $sql = "DELETE FROM tasks WHERE id = $taskId";
 
@@ -175,4 +159,3 @@ function deleteTask($conn) {
         echo json_encode(['error' => 'Failed to delete task: ' . $conn->error]);
     }
 }
-?>
